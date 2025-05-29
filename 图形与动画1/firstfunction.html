@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - PCD</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">	
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./js/three.module.js",
+					"three/": "./js/"
+				}
+			}
+		</script>
+		<script src="js/three.min.js"></script>
+	</head>
+	<body>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/pcl.js/dist/pcl.js"></script>
+		
+
+		<script type="module">
+
+
+			import { OrbitControls } from './js/OrbitControls.js';
+			import { PCDLoader } from './js/PCDLoader.js';
+			import { GUI } from './js/lil-gui.module.min.js';
+
+			let camera, scene, renderer,controls;
+			let points1,points2,points3;
+			let loader = new PCDLoader();
+			const gui = new GUI();
+
+			var filteredPoints1;
+			var filteredPoints2;
+			var filteredPoints3;
+
+
+			// 创建场景
+			var scene1 = new THREE.Scene();
+			var scene2 = new THREE.Scene();
+			var scene3 = new THREE.Scene();
+
+			var camera2 = new THREE.PerspectiveCamera(40, window.innerWidth / 3 / window.innerHeight, 0.01, 1000);
+			camera2.position.z = 1;
+			var camera1 = new THREE.PerspectiveCamera(40, window.innerWidth / 3 / window.innerHeight, 0.01, 1000);
+			camera1.position.z = 1;
+			var camera3 = new THREE.PerspectiveCamera(40, window.innerWidth / 3 / window.innerHeight, 0.01, 1000);
+			camera3.position.z = 1;
+
+
+
+			async function main(){
+				await PCL.init({
+    				url: 'https://cdn.jsdelivr.net/npm/pcl.js/dist/pcl-core.wasm',
+  				});
+
+				//加载pcd文件
+				const data = await fetch('./model1.pcd').then(res => res.arrayBuffer());
+				// 加载PCD文件数据，返回点云对象
+  				const cloud = PCL.loadPCDData(data, PCL.PointXYZ);
+
+				//passthrough滤波
+				//设置过滤器
+				const passthroughFilter = new PCL.PassThrough(PCL.PointXYZ);
+				passthroughFilter.setInputCloud(cloud);
+				//设置参数
+				passthroughFilter.setFilterFieldName('z'); // 设置要过滤的字段名，这里以z轴为例
+				passthroughFilter.setFilterLimits(0.0, 0.03); // 设置范围限制
+				//应用过滤
+				const cloudFiltered = passthroughFilter.filter();
+				// 将过滤后的点云对象保存为 PCD 文件
+				filteredPoints1 = PCL.savePCDData(cloudFiltered);
+				
+				//半径离群滤波
+				const radiusOutlierRemoval = new PCL.RadiusOutlierRemoval();
+				radiusOutlierRemoval.setInputCloud(cloud);
+				radiusOutlierRemoval.setRadiusSearch(0.01);
+				radiusOutlierRemoval.setMinNeighborsInRadius(0);
+				var cloudFiltered2 = radiusOutlierRemoval.filter();
+				filteredPoints2 = PCL.savePCDData(cloudFiltered2);
+				
+				//体素网格滤波
+                const voxelGrid = new PCL.VoxelGrid();
+                voxelGrid.setInputCloud(cloud);
+                voxelGrid.setLeafSize(1, 1, 1);
+                var cloudFiltered3 = voxelGrid.filter();
+                filteredPoints3 = PCL.savePCDData(cloudFiltered3);
+
+				display();
+			}
+
+			init();
+			render();
+			main();
+			animate();
+
+			function display(){
+				points1 = loader.parse(filteredPoints1,' ');
+				scene1.add(points1);
+
+				points2 = loader.parse(filteredPoints2,' ');
+                scene2.add(points2);
+
+				points3 = loader.parse(filteredPoints3,' ')
+				scene3.add(points3)
+
+			}
+
+			var control1 = new OrbitControls(camera1, renderer.domElement);
+			var control2 = new OrbitControls(camera2, renderer.domElement);
+			var control3 = new OrbitControls(camera3, renderer.domElement);
+
+			function init() {
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 0.01, 40 );
+				camera.position.set( 1, 1, 1 );
+
+				scene = new THREE.Scene();
+				scene.add( camera );
+				var axes= new THREE.AxesHelper(2);
+				scene.add( axes );
+
+				controls = new OrbitControls( camera, renderer.domElement );
+			}
+
+			//加载pcd文件
+			const data = await fetch('./model1.pcd').then(res => res.arrayBuffer());
+			// 加载PCD文件数据，返回点云对象
+  			const cloud = PCL.loadPCDData(data, PCL.PointXYZ);
+
+			var parameters = {
+			"passthrough滤波":{
+				"半径":0.03,
+			},
+			"体素网格滤波器":{
+				"叶体积":1,
+			},
+			"半径离群滤波":{
+				"离群半径":4,
+			}
+			};
+			var filter2Folder = gui.addFolder('passthrough滤波');
+			filter2Folder.add(parameters["passthrough滤波"], '半径', 0, 0.1).step(0.01).onChange(function(value){
+				scene1.remove(points1);
+				//passthrough滤波
+				let passthroughFilter = new PCL.PassThrough(PCL.PointXYZ);
+				passthroughFilter.setInputCloud(cloud);
+				passthroughFilter.setFilterFieldName('z'); // 设置要过滤的字段名，这里以z轴为例
+				passthroughFilter.setFilterLimits(0.0, value); // 设置范围限制
+				let cloudFiltered = passthroughFilter.filter();
+				let newfilteredPoints = PCL.savePCDData(cloudFiltered);
+				points1 = loader.parse(newfilteredPoints,' ');
+				scene1.add(points1);
+				render;
+			});
+
+			var filter2Folder = gui.addFolder('体素网格滤波器');
+			filter2Folder.add(parameters["体素网格滤波器"], '叶体积', 0, 5).step(0.1).onChange(function(value){
+				scene2.remove(points2);
+				//半径离群滤波
+				let radiusOutlierRemoval = new PCL.RadiusOutlierRemoval();
+				radiusOutlierRemoval.setInputCloud(cloud);
+				radiusOutlierRemoval.setRadiusSearch(value);
+				var cloudFiltered2 = radiusOutlierRemoval.filter();
+				let filteredPoints2 = PCL.savePCDData(cloudFiltered2);
+				points2 = loader.parse(filteredPoints2,' ');
+				scene2.add(points2);
+				render;
+			});
+
+			var filter3Folder = gui.addFolder('半径离群滤波');
+			filter3Folder.add(parameters["半径离群滤波"], '离群半径', 0, 100).step(0.1).onChange(function(value){
+				scene3.remove(points3);
+				//体素网格滤波
+                let voxelGrid = new PCL.VoxelGrid();
+                voxelGrid.setInputCloud(cloud);
+                voxelGrid.setLeafSize(value, value, value);
+                var cloudFiltered3 = voxelGrid.filter();
+                let filteredPoints3 = PCL.savePCDData(cloudFiltered3);
+				points3 = loader.parse(filteredPoints3,' ');
+				scene3.add(points3);
+				render;
+			});
+
+
+			// 分块更新场景
+			function render() {
+			requestAnimationFrame(render);
+
+			renderer.setViewport(0, 0, window.innerWidth / 3, window.innerHeight);
+			renderer.setScissor(0, 0, window.innerWidth / 3, window.innerHeight);
+			renderer.setScissorTest(true);
+			renderer.setClearColor(0x00ff00);
+			renderer.render(scene1, camera1);
+
+			renderer.setViewport(window.innerWidth / 3, 0, window.innerWidth / 3, window.innerHeight);
+			renderer.setScissor(window.innerWidth / 3, 0, window.innerWidth / 3, window.innerHeight);
+			renderer.setScissorTest(true);
+			renderer.setClearColor(0x253798);
+			renderer.render(scene2, camera2);
+
+			renderer.setViewport((window.innerWidth / 3) * 2, 0, window.innerWidth / 3, window.innerHeight);
+			renderer.setScissor((window.innerWidth / 3) * 2, 0, window.innerWidth / 3, window.innerHeight);
+			renderer.setScissorTest(true);
+			renderer.setClearColor(0x0ff0ff);
+			renderer.render(scene3, camera3);
+			}
+			
+
+			function animate() {
+				requestAnimationFrame(animate);
+				controls.update();
+				renderer.render( scene1, camera1 );
+				renderer.render( scene2, camera2 );
+				renderer.render( scene3, camera3 );
+			}
+
+		</script>
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>duweiminWEBPCD</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	</head>
+	<body>
+		<script type="importmap">
+			
+			{
+				"imports": {
+					"three": "./js/three.module.js",
+					"three/addons/": "./js/"
+				}
+			}
+		
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+
+			import { OrbitControls } from 'three/addons/OrbitControls.js';
+			import { PCDLoader } from 'three/addons/PCDLoader.js';
+			import { GUI } from 'three/addons/lil-gui.module.min.js';
+
+			let camera, scene, renderer;
+
+			init();
+			render();
+			creatDirectlight();
+			pointAnimateGui();
+			cameraAnimateGui();
+
+			function creatDirectlight(){
+				const light = new THREE.DirectionalLight(0xff00ff); // 设置光源颜色光源
+				light.position.set(0.25, 0.25, 0.25); // 设置光源位置
+				scene.add(light);
+				const visualizedLight = createVisualizedLight(scene, light);
+				render();
+			}
+
+			function createVisualizedLight(scene, light) {
+  			// 创建可视化光源位置的球体
+  			const lightSphereGeometry = new THREE.SphereGeometry(0.01);
+			const lightSphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+			const lightSphere = new THREE.Mesh(lightSphereGeometry, lightSphereMaterial);
+			lightSphere.position.copy(light.position);
+			scene.add(lightSphere);
+
+			// 创建可视化光照射线
+			const lightDirection = light.position.clone(); // 获取光线方向
+			const lightRayGeometry = new THREE.BufferGeometry();
+			const vertices = new Float32Array([
+    			0, 0, 0,  // 起始点
+    			lightDirection.x, lightDirection.y, lightDirection.z  // 光线方向
+			]);
+
+			lightRayGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+			const lightRayMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+			const lightRay = new THREE.Line(lightRayGeometry, lightRayMaterial);
+			scene.add(lightRay);
+			}
+			
+
+			function init() {
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color(0xffffff);
+
+				camera = new THREE.PerspectiveCamera( 30, window.innerWidth / window.innerHeight, 0.01, 40 );
+				camera.position.set( 0, 0, 1 );
+				scene.add( camera );
+				var axes= new THREE.AxesHelper(2);
+				scene.add(axes);
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.addEventListener( 'change', render ); // use if there is no animation loop
+				controls.minDistance = 0.5;
+				controls.maxDistance = 10;
+				controls.autoRotate = true;
+
+
+
+				scene.add( new THREE.AxesHelper( 1 ) );
+
+				const loader = new PCDLoader();
+				const pcdFiles = [
+				{
+					filePath: './images/bun0.pcd',
+					size: 0.01,
+					color: 0xff0000,
+				},
+				{
+					filePath: './images/model1.pcd',
+					size: 0.001,
+					color: 0x0000ff,
+				},
+				{
+					filePath: './images/model4.pcd',
+					size: 0.01,
+					color: 0x00ff00,
+				}];
+				
+				const distance = 0.3; // 调整点云之间的距离
+				const totalPoints = pcdFiles.length;
+				const centerPoint = new THREE.Vector3(0, 0, 0);
+				const gui = new GUI();
+				
+
+				for (let i = 0; i < pcdFiles.length; i++) {
+					const pcdFile = pcdFiles[i];
+					const points = new THREE.Points();
+
+					loader.load( pcdFile.filePath, function ( points ) { 
+						
+						points.geometry.center();
+						points.geometry.rotateX( Math.PI );
+
+						const xOffset = (i - Math.floor(totalPoints / 2)) * distance; // 计算偏移量
+						points.position.x = xOffset;
+
+						points.name = `${i}.pcd`;
+						
+						points.material.color.set(pcdFile.color);
+						points.material.size = pcdFile.size;
+						scene.add( points );
+						
+						gui.add(points.material, 'size', 0.0005, 0.01).onChange(render).name("点云大小");
+						gui.addColor(points.material, 'color').onChange(render).name("点云颜色");
+						gui.open();
+
+					} ,undefined, function ( error ) {
+					console.error( error );
+					});
+				}
+
+					render();
+
+				
+				
+				
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function pointAnimateGui(){//控制点云旋转
+				const controls = {
+				rotation: true,
+				rotationSpeed: 0.01
+			};
+			var gui1 = new GUI();
+			gui1.add(controls, 'rotation').onChange(function(value) {
+				if (value) {
+					pointAnimate();
+				}
+			}).name("点云是否旋转");
+			gui1.add(controls, 'rotationSpeed', 0, 0.1).name("旋转速度");
+			var guiElement = gui1.domElement;
+			// 设置GUI的样式
+			guiElement.style.position = 'absolute';
+			guiElement.style.top = '0';
+			guiElement.style.left = '0';
+			gui1.open();
+			function pointAnimate() {
+				if (controls.rotation) {
+					requestAnimationFrame(pointAnimate);
+				}
+				
+				scene.traverse(function(object) {
+					if (object instanceof THREE.Points) {
+						object.rotation.y += controls.rotationSpeed;
+					}
+				});
+				
+				render();
+			}
+			pointAnimate();
+			}
+
+			function cameraAnimateGui() {
+				var controls = {
+					rotation: false,
+					xrotationSpeed: 0,
+					yrotationSpeed: 0,
+					zrotationSpeed: 0
+				};
+
+				var gui2 = new GUI();
+				gui2.add(controls, 'rotation').onChange(function(value) {
+				if (value) {
+					cameraAnimate();
+				}
+				}).name("相机是否旋转");
+				gui2.add(controls, 'xrotationSpeed', 0, 0.0001).name("绕x旋转速度");
+				gui2.add(controls, 'yrotationSpeed', 0, 0.0001).name("绕y旋转速度");
+				gui2.add(controls, 'zrotationSpeed', 0, 0.0001).name("绕z旋转速度");
+				var guiElement = gui2.domElement;
+				// 设置GUI的样式
+				guiElement.style.position = 'absolute';
+				guiElement.style.top = '0';
+				guiElement.style.left = '250px';
+				gui2.open();
+
+				function cameraAnimate() {
+					if (controls.rotation) {
+					requestAnimationFrame(cameraAnimate);
+					}
+
+					camera.rotation.z += controls.zrotationSpeed;
+					camera.rotation.x += controls.xrotationSpeed;
+					camera.rotation.y += controls.yrotationSpeed;
+
+					renderer.render(scene, camera);
+				}
+
+  					cameraAnimate();
+			}
+			
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				render();
+
+			}
+
+			function render() {
+
+				renderer.render( scene, camera );
+				
+			}
+
+			
+			
+		</script>
+	</body>
+</html>
